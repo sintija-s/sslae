@@ -6,14 +6,12 @@ SSLAE trains a classifier and an autoencoder on a shared latent representation, 
 
 ## Installation
 
-Built and tested with Python 3.10. All required libraries are pinned in `requirements.txt`.
+Built and tested with Python 3.10. Dependencies are managed with [uv](https://docs.astral.sh/uv/) and pinned in `pyproject.toml` and `uv.lock`.
 
 ```bash
 git clone https://github.com/sintija-s/sslae.git
 cd sslae
-python3.10 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
+uv sync
 ```
 
 PyTorch Lightning selects the hardware automatically: a GPU (CUDA or Apple MPS) if one is available, otherwise the CPU.
@@ -53,7 +51,7 @@ If you use SSLAE, please cite:
   number = {11},
   journal = {Machine Learning},
   publisher = {Springer Science and Business Media LLC},
-  author = {Stevanoska,  Sintija and Levatić,  Jurica and Džeroski,  Sašo},
+  author = {Stevanoska, Sintija and Levatić, Jurica and Džeroski, Sašo},
   year = {2025},
   month = Oct 
 }
