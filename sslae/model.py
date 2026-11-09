@@ -2,10 +2,9 @@ import warnings
 
 import numpy as np
 import pytorch_lightning as pl
-import torch
 import torch.nn as nn
 from pytorch_lightning.trainer.connectors.data_connector import PossibleUserWarning
-from torch import optim, isnan, tensor
+from torch import Tensor, optim, isnan, tensor
 
 warnings.filterwarnings("ignore", category=PossibleUserWarning)
 
@@ -18,14 +17,12 @@ class SemiSupervisedAutoEncoder(pl.LightningModule):
         n_intrinsic: int,
         n_classes: int,
         ssl_w: float,
-        random_state: int,
         mode: str = "MCC",
         lr: float = 1e-3,
         weight_decay: float = 0.0,
         dropout: float = 0.0,
     ):
         super().__init__()
-        self._set_seeds(random_state)
         self.mode = mode.upper()
         n_hidden = round((n_input + n_intrinsic) // 2)
         n_hidden_cls = n_intrinsic + n_classes
@@ -57,16 +54,6 @@ class SemiSupervisedAutoEncoder(pl.LightningModule):
         self.y_proba_test = np.empty(0)
         self.y_prediction_test = np.empty(0)
 
-    def _set_seeds(self, seed):
-        """Set random seeds for reproducibility."""
-        torch.manual_seed(seed)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed(seed)
-            torch.cuda.manual_seed_all(seed)
-        np.random.seed(seed)
-        torch.backends.cudnn.deterministic = True
-        torch.backends.cudnn.benchmark = False
-
     def forward(self, x):
         z = self.encoder(x)
         return self.classifier(z)
@@ -74,7 +61,7 @@ class SemiSupervisedAutoEncoder(pl.LightningModule):
     def configure_optimizers(self):
         return optim.Adam(self.parameters(), lr=self.lr, weight_decay=self.weight_decay)
 
-    def compute_classification_loss(self, y_hat: tensor, y: tensor) -> tensor:
+    def compute_classification_loss(self, y_hat: Tensor, y: Tensor) -> Tensor:
         null_mask = isnan(y).float()
         y[isnan(y)] = 0
         y_cl = y.view(-1).long()
@@ -87,8 +74,8 @@ class SemiSupervisedAutoEncoder(pl.LightningModule):
         return classification_loss
 
     def get_prediction_probability_arrays(
-        self, y_hat: tensor, batch_idx: int, step
-    ) -> tensor:
+        self, y_hat: Tensor, batch_idx: int, step
+    ) -> tuple[np.ndarray, np.ndarray]:
         prediction_array_batch = (
             nn.functional.softmax(y_hat, dim=1).detach().cpu().float().numpy()
         )
@@ -101,14 +88,18 @@ class SemiSupervisedAutoEncoder(pl.LightningModule):
 
     def reset_prediction_arrays(self, step, n_classes):
         if step == "train":
-            self.y_proba_train = self.y_proba_train.reshape(-1, n_classes)
+            self.y_proba_train = np.empty((0, n_classes))
+            self.y_prediction_train = np.empty(0)
         elif step == "val":
-            self.y_proba_validation = self.y_proba_validation.reshape(-1, n_classes)
+            self.y_proba_validation = np.empty((0, n_classes))
+            self.y_prediction_validation = np.empty(0)
         else:
-            self.y_prediction_test = self.y_prediction_test.reshape(-1, 1)
-            self.y_proba_test = self.y_proba_test.reshape(-1, n_classes)
+            self.y_proba_test = np.empty((0, n_classes))
+            self.y_prediction_test = np.empty(0)
 
-    def shared_step(self, batch: tuple[tensor, tensor], batch_idx: int, step) -> tensor:
+    def shared_step(
+        self, batch: tuple[Tensor, Tensor], batch_idx: int, step
+    ) -> tuple[Tensor, np.ndarray, np.ndarray]:
         x, y = batch
         x = x.view(x.size(0), -1)
 
@@ -131,8 +122,8 @@ class SemiSupervisedAutoEncoder(pl.LightningModule):
         )
 
     def training_step(
-        self, train_batch: tuple[tensor, tensor], batch_idx: int
-    ) -> tensor:
+        self, train_batch: tuple[Tensor, Tensor], batch_idx: int
+    ) -> Tensor:
         loss, prediction_array_batch, predicted_label_batch = self.shared_step(
             train_batch, batch_idx, step="train"
         )
@@ -148,7 +139,7 @@ class SemiSupervisedAutoEncoder(pl.LightningModule):
 
         return loss
 
-    def validation_step(self, val_batch: tuple[tensor, tensor], batch_idx: int):
+    def validation_step(self, val_batch: tuple[Tensor, Tensor], batch_idx: int):
         loss, prediction_array_batch, predicted_label_batch = self.shared_step(
             val_batch, batch_idx, step="val"
         )
@@ -162,7 +153,7 @@ class SemiSupervisedAutoEncoder(pl.LightningModule):
             self.y_prediction_validation, predicted_label_batch
         )
 
-    def test_step(self, test_batch: tuple[tensor, tensor], batch_idx: int):
+    def test_step(self, test_batch: tuple[Tensor, Tensor], batch_idx: int):
         loss, prediction_array_batch, predicted_label_batch = self.shared_step(
             test_batch, batch_idx, step="test"
         )
